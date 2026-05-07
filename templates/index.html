@@ -1,0 +1,1293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MambaMER — Music Emotion Recognition</title>
+    <meta name="description" content="Real-time music emotion recognition using MambaMER. Predict valence and arousal curves for any song.">
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <!-- Chart.js (auto build — registers all components automatically) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <script>
+        // Chart.js v4 UMD requires explicit registration of components
+        if (typeof Chart !== 'undefined' && Chart.register) {
+            Chart.register(...Chart.registerables || []);
+        }
+    </script>
+
+    <style>
+        /* ================================================================
+           Design System
+           ================================================================ */
+        :root {
+            --bg-primary:   #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-card:      #16161f;
+            --bg-card-hover:#1c1c28;
+            --bg-input:     #1a1a26;
+
+            --border:       #2a2a3a;
+            --border-focus: #6366f1;
+
+            --text-primary:   #f0f0f5;
+            --text-secondary: #8888a0;
+            --text-muted:     #555570;
+
+            --accent:       #6366f1;
+            --accent-light: #818cf8;
+            --accent-glow:  rgba(99, 102, 241, 0.15);
+
+            --valence:      #3b82f6;
+            --valence-light:#60a5fa;
+            --arousal:      #10b981;
+            --arousal-light:#34d399;
+
+            --gt-color:     #f97316;
+
+            --danger:       #ef4444;
+            --success:      #22c55e;
+            --warning:      #eab308;
+
+            --radius:       12px;
+            --radius-lg:    16px;
+            --radius-sm:    8px;
+
+            --shadow:       0 4px 24px rgba(0,0,0,0.4);
+            --shadow-lg:    0 8px 48px rgba(0,0,0,0.5);
+            --transition:   all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* ================================================================
+           Background Effect
+           ================================================================ */
+        .bg-gradient {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 0;
+            pointer-events: none;
+            background:
+                radial-gradient(ellipse 600px 400px at 20% 10%, rgba(99, 102, 241, 0.06), transparent),
+                radial-gradient(ellipse 500px 350px at 80% 70%, rgba(16, 185, 129, 0.04), transparent),
+                radial-gradient(ellipse 400px 300px at 50% 50%, rgba(59, 130, 246, 0.03), transparent);
+        }
+
+        /* ================================================================
+           Layout
+           ================================================================ */
+        .app-container {
+            position: relative;
+            z-index: 1;
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 24px 32px 48px;
+        }
+
+        /* ================================================================
+           Header
+           ================================================================ */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 0 32px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 32px;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .logo {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, var(--accent), var(--arousal));
+            border-radius: var(--radius);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            font-weight: 800;
+            letter-spacing: -1px;
+            box-shadow: 0 0 24px var(--accent-glow);
+        }
+
+        .header-title h1 {
+            font-size: 24px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, var(--text-primary), var(--accent-light));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header-title p {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+
+        .status-dot.ready { background: var(--success); }
+        .status-dot.loading { background: var(--warning); }
+        .status-dot.error { background: var(--danger); }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* ================================================================
+           Main Grid
+           ================================================================ */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 380px 1fr;
+            gap: 24px;
+            align-items: start;
+        }
+
+        @media (max-width: 1024px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* ================================================================
+           Cards
+           ================================================================ */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            transition: var(--transition);
+        }
+
+        .card:hover {
+            border-color: rgba(99, 102, 241, 0.2);
+        }
+
+        .card-header {
+            padding: 20px 24px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .card-header h2 {
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: -0.2px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .card-header h2 .icon {
+            font-size: 16px;
+        }
+
+        .card-body {
+            padding: 20px 24px 24px;
+        }
+
+        /* ================================================================
+           Tabs (Mode Switcher)
+           ================================================================ */
+        .tab-group {
+            display: flex;
+            gap: 4px;
+            padding: 4px;
+            background: var(--bg-primary);
+            border-radius: var(--radius-sm);
+            margin-bottom: 20px;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 10px 12px;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            color: var(--text-secondary);
+            font-family: 'Inter', sans-serif;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .tab-btn:hover {
+            color: var(--text-primary);
+            background: rgba(255,255,255,0.04);
+        }
+
+        .tab-btn.active {
+            background: var(--accent);
+            color: white;
+            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+        }
+
+        /* ================================================================
+           Form Elements
+           ================================================================ */
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+
+        .form-select, .form-input {
+            width: 100%;
+            padding: 10px 14px;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+            transition: var(--transition);
+            appearance: none;
+            outline: none;
+        }
+
+        .form-select:focus, .form-input:focus {
+            border-color: var(--border-focus);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+
+        .select-wrapper {
+            position: relative;
+        }
+
+        .select-wrapper::after {
+            content: "▾";
+            position: absolute;
+            right: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            pointer-events: none;
+            font-size: 14px;
+        }
+
+        /* File Upload */
+        .file-upload {
+            border: 2px dashed var(--border);
+            border-radius: var(--radius);
+            padding: 24px 16px;
+            text-align: center;
+            cursor: pointer;
+            transition: var(--transition);
+            background: rgba(99, 102, 241, 0.02);
+        }
+
+        .file-upload:hover {
+            border-color: var(--accent);
+            background: var(--accent-glow);
+        }
+
+        .file-upload.has-file {
+            border-color: var(--success);
+            background: rgba(34, 197, 94, 0.05);
+        }
+
+        .file-upload-icon {
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+
+        .file-upload-text {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .file-upload-name {
+            font-size: 12px;
+            color: var(--success);
+            margin-top: 6px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        /* Checkbox */
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            background: var(--bg-input);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .checkbox-group:hover {
+            background: var(--bg-card-hover);
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--accent);
+            cursor: pointer;
+        }
+
+        .checkbox-group label {
+            font-size: 13px;
+            color: var(--text-secondary);
+            cursor: pointer;
+        }
+
+        /* Button */
+        .btn-primary {
+            width: 100%;
+            padding: 14px 24px;
+            border: none;
+            border-radius: var(--radius-sm);
+            background: linear-gradient(135deg, var(--accent), #7c3aed);
+            color: white;
+            font-family: 'Inter', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4);
+        }
+
+        .btn-primary:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-primary .spinner {
+            display: none;
+            width: 18px;
+            height: 18px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            margin-right: 8px;
+        }
+
+        .btn-primary.loading .spinner {
+            display: inline-block;
+        }
+
+        .btn-primary.loading .btn-text {
+            opacity: 0.7;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .btn-secondary {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text-secondary);
+            font-family: 'Inter', sans-serif;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition);
+            text-decoration: none;
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--accent);
+            color: var(--text-primary);
+            background: var(--bg-card-hover);
+        }
+
+        /* ================================================================
+           Results Section
+           ================================================================ */
+        .results-container {
+            display: none;
+        }
+
+        .results-container.visible {
+            display: block;
+        }
+
+        /* Stats Row */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 16px;
+            text-align: center;
+            transition: var(--transition);
+        }
+
+        .stat-card:hover {
+            border-color: rgba(99, 102, 241, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .stat-value.valence { color: var(--valence-light); }
+        .stat-value.arousal { color: var(--arousal-light); }
+        .stat-value.neutral { color: var(--text-primary); }
+
+        .stat-label {
+            font-size: 11px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        /* Chart Container */
+        .chart-card {
+            margin-bottom: 24px;
+        }
+
+        .chart-wrapper {
+            position: relative;
+            height: 320px;
+            padding: 8px;
+        }
+
+        .chart-actions {
+            display: flex;
+            gap: 8px;
+            padding: 12px 24px;
+            border-top: 1px solid var(--border);
+        }
+
+        /* ================================================================
+           Emotion Indicator
+           ================================================================ */
+        .emotion-display {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 24px;
+            padding: 20px;
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.05), rgba(16, 185, 129, 0.05));
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            margin-bottom: 24px;
+        }
+
+        .va-position {
+            width: 160px;
+            height: 160px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            position: relative;
+            background:
+                linear-gradient(to right, rgba(59, 130, 246, 0.1), transparent 50%, rgba(239, 68, 68, 0.1)),
+                linear-gradient(to top, rgba(100, 100, 140, 0.1), transparent 50%, rgba(249, 115, 22, 0.1));
+            overflow: hidden;
+        }
+
+        .va-position::before,
+        .va-position::after {
+            content: "";
+            position: absolute;
+            background: var(--border);
+        }
+
+        .va-position::before {
+            width: 1px;
+            height: 100%;
+            left: 50%;
+            top: 0;
+        }
+
+        .va-position::after {
+            width: 100%;
+            height: 1px;
+            left: 0;
+            top: 50%;
+        }
+
+        .va-dot {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--accent);
+            box-shadow: 0 0 12px rgba(99, 102, 241, 0.5);
+            transform: translate(-50%, -50%);
+            transition: all 0.5s ease;
+        }
+
+        .va-labels {
+            position: absolute;
+            font-size: 9px;
+            color: var(--text-muted);
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .va-label-top    { top: 4px; left: 50%; transform: translateX(-50%); }
+        .va-label-bottom { bottom: 4px; left: 50%; transform: translateX(-50%); }
+        .va-label-left   { left: 4px; top: 50%; transform: translateY(-50%); }
+        .va-label-right  { right: 4px; top: 50%; transform: translateY(-50%); }
+
+        .emotion-text {
+            text-align: center;
+        }
+
+        .emotion-name {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .emotion-desc {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        /* ================================================================
+           Error/Empty States
+           ================================================================ */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 24px;
+            text-align: center;
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.6;
+        }
+
+        .empty-state-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .empty-state-desc {
+            font-size: 13px;
+            color: var(--text-secondary);
+            max-width: 320px;
+            line-height: 1.6;
+        }
+
+        .error-banner {
+            padding: 12px 16px;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            border-radius: var(--radius-sm);
+            color: var(--danger);
+            font-size: 13px;
+            margin-bottom: 16px;
+            display: none;
+        }
+
+        .error-banner.visible {
+            display: block;
+        }
+
+        /* ================================================================
+           Scrollbar
+           ================================================================ */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-muted);
+        }
+
+        /* ================================================================
+           Animations
+           ================================================================ */
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.4s ease forwards;
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        .slide-up {
+            animation: slideUp 0.5s ease forwards;
+        }
+    </style>
+</head>
+<body>
+
+<div class="bg-gradient"></div>
+
+<div class="app-container">
+
+    <!-- ═══════════════════════════════════════════════════════
+         HEADER
+         ═══════════════════════════════════════════════════════ -->
+    <header class="header">
+        <div class="header-left">
+            <div class="logo">M</div>
+            <div class="header-title">
+                <h1>MambaMER</h1>
+                <p>Multimodal Music Emotion Recognition</p>
+            </div>
+        </div>
+        <div class="status-badge" id="statusBadge">
+            <div class="status-dot" id="statusDot"></div>
+            <span id="statusText">Connecting...</span>
+        </div>
+    </header>
+
+    <!-- ═══════════════════════════════════════════════════════
+         MAIN GRID
+         ═══════════════════════════════════════════════════════ -->
+    <div class="main-grid">
+
+        <!-- ──────────── LEFT PANEL: Controls ──────────── -->
+        <div class="controls-panel">
+            <div class="card">
+                <div class="card-header">
+                    <h2><span class="icon">🎵</span> Inference Settings</h2>
+                </div>
+                <div class="card-body">
+
+                    <!-- Mode Tabs -->
+                    <div class="tab-group">
+                        <button class="tab-btn active" data-mode="csv" id="tabCsv" onclick="switchMode('csv')">
+                            PMEmo Dataset
+                        </button>
+                        <button class="tab-btn" data-mode="audio" id="tabAudio" onclick="switchMode('audio')">
+                            Upload Audio
+                        </button>
+                    </div>
+
+                    <!-- Error Banner -->
+                    <div class="error-banner" id="errorBanner"></div>
+
+                    <!-- CSV Mode Panel -->
+                    <div id="csvPanel">
+                        <div class="form-group">
+                            <label class="form-label">Song ID</label>
+                            <div class="select-wrapper">
+                                <select class="form-select" id="songSelect">
+                                    <option value="">Loading songs...</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <div class="checkbox-group" onclick="document.getElementById('compareGt').click()">
+                                <input type="checkbox" id="compareGt" checked>
+                                <label for="compareGt">Compare with ground truth</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Audio Mode Panel -->
+                    <div id="audioPanel" style="display: none;">
+                        <div class="form-group">
+                            <label class="form-label">Audio File</label>
+                            <div class="file-upload" id="audioDropZone" onclick="document.getElementById('audioFile').click()">
+                                <div class="file-upload-icon">🎧</div>
+                                <div class="file-upload-text">Click to upload audio or video file</div>
+                                <div class="file-upload-name" id="audioFileName"></div>
+                                <input type="file" id="audioFile" accept=".wav,.mp3,.flac,.ogg,.m4a,.mp4,.mkv,.avi,.webm,.mov">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Lyrics File (optional)</label>
+                            <div class="file-upload" id="lrcDropZone" onclick="document.getElementById('lrcFile').click()">
+                                <div class="file-upload-icon">📝</div>
+                                <div class="file-upload-text">Click to upload .lrc file</div>
+                                <div class="file-upload-name" id="lrcFileName"></div>
+                                <input type="file" id="lrcFile" accept=".lrc,.txt">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Common Settings -->
+                    <div class="form-group">
+                        <label class="form-label">Emotional Lag (seconds)</label>
+                        <input class="form-input" type="number" id="emotionalLag" value="2.0" min="0" max="10" step="0.5">
+                    </div>
+
+                    <!-- Run Button -->
+                    <button class="btn-primary" id="runBtn" onclick="runInference()">
+                        <span class="spinner"></span>
+                        <span class="btn-text">Run Inference</span>
+                    </button>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- ──────────── RIGHT PANEL: Results ──────────── -->
+        <div class="results-panel">
+
+            <!-- Empty State -->
+            <div class="card" id="emptyState">
+                <div class="empty-state">
+                    <div class="empty-state-icon">🎼</div>
+                    <div class="empty-state-title">No predictions yet</div>
+                    <div class="empty-state-desc">
+                        Select a song from the PMEmo dataset or upload your own audio file, then click "Run Inference" to see emotion predictions.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results (hidden initially) -->
+            <div class="results-container" id="resultsContainer">
+
+                <!-- Stats Row -->
+                <div class="stats-grid fade-in" id="statsGrid">
+                    <div class="stat-card">
+                        <div class="stat-value valence" id="statValMean">—</div>
+                        <div class="stat-label">Avg Valence</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value arousal" id="statAroMean">—</div>
+                        <div class="stat-label">Avg Arousal</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value neutral" id="statFrames">—</div>
+                        <div class="stat-label">Frames</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value neutral" id="statDuration">—</div>
+                        <div class="stat-label">Duration</div>
+                    </div>
+                </div>
+
+                <!-- Emotion VA Space -->
+                <div class="emotion-display fade-in" id="emotionDisplay">
+                    <div class="va-position" id="vaSpace">
+                        <span class="va-labels va-label-top">High A</span>
+                        <span class="va-labels va-label-bottom">Low A</span>
+                        <span class="va-labels va-label-left">Low V</span>
+                        <span class="va-labels va-label-right">High V</span>
+                        <div class="va-dot" id="vaDot"></div>
+                    </div>
+                    <div class="emotion-text">
+                        <div class="emotion-name" id="emotionName">—</div>
+                        <div class="emotion-desc" id="emotionDesc">Average position in VA space</div>
+                    </div>
+                </div>
+
+                <!-- Valence Chart -->
+                <div class="card chart-card slide-up">
+                    <div class="card-header">
+                        <h2><span class="icon" style="color: var(--valence-light);">◆</span> Valence Over Time</h2>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="valenceChart"></canvas>
+                    </div>
+                    <div class="chart-actions">
+                        <a class="btn-secondary" id="downloadCsv" href="#" download>
+                            ⬇ Download CSV
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Arousal Chart -->
+                <div class="card chart-card slide-up">
+                    <div class="card-header">
+                        <h2><span class="icon" style="color: var(--arousal-light);">◆</span> Arousal Over Time</h2>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="arousalChart"></canvas>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ================================================================
+// State
+// ================================================================
+
+let currentMode = "csv";
+let valenceChart = null;
+let arousalChart = null;
+let isRunning = false;
+
+// ================================================================
+// Init
+// ================================================================
+
+document.addEventListener("DOMContentLoaded", () => {
+    checkStatus();
+    loadSongIds();
+    setupFileInputs();
+});
+
+async function checkStatus() {
+    try {
+        const res = await fetch("/api/status");
+        const data = await res.json();
+        const dot = document.getElementById("statusDot");
+        const text = document.getElementById("statusText");
+
+        if (!data.stats_exists) {
+            dot.className = "status-dot error";
+            text.textContent = "Stats missing — run compute_global_stats.py";
+        } else if (!data.model_exists) {
+            dot.className = "status-dot error";
+            text.textContent = "Model not found";
+        } else {
+            dot.className = "status-dot ready";
+            text.textContent = `Ready · ${data.device.toUpperCase()}`;
+        }
+    } catch {
+        const dot = document.getElementById("statusDot");
+        const text = document.getElementById("statusText");
+        dot.className = "status-dot error";
+        text.textContent = "Server not running";
+    }
+}
+
+async function loadSongIds() {
+    try {
+        const res = await fetch("/api/song-ids");
+        const data = await res.json();
+        const select = document.getElementById("songSelect");
+        select.innerHTML = "";
+
+        data.ids.forEach(id => {
+            const opt = document.createElement("option");
+            opt.value = id;
+            opt.textContent = `Song #${id}`;
+            select.appendChild(opt);
+        });
+    } catch {
+        document.getElementById("songSelect").innerHTML =
+            '<option value="">Failed to load songs</option>';
+    }
+}
+
+function setupFileInputs() {
+    document.getElementById("audioFile").addEventListener("change", (e) => {
+        const name = e.target.files[0]?.name;
+        const zone = document.getElementById("audioDropZone");
+        const label = document.getElementById("audioFileName");
+        if (name) {
+            zone.classList.add("has-file");
+            label.textContent = name;
+        }
+    });
+
+    document.getElementById("lrcFile").addEventListener("change", (e) => {
+        const name = e.target.files[0]?.name;
+        const zone = document.getElementById("lrcDropZone");
+        const label = document.getElementById("lrcFileName");
+        if (name) {
+            zone.classList.add("has-file");
+            label.textContent = name;
+        }
+    });
+}
+
+// ================================================================
+// Mode Switching
+// ================================================================
+
+function switchMode(mode) {
+    currentMode = mode;
+    document.querySelectorAll(".tab-btn").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.mode === mode);
+    });
+    document.getElementById("csvPanel").style.display = mode === "csv" ? "block" : "none";
+    document.getElementById("audioPanel").style.display = mode === "audio" ? "block" : "none";
+}
+
+// ================================================================
+// Inference
+// ================================================================
+
+async function runInference() {
+    if (isRunning) return;
+
+    const btn = document.getElementById("runBtn");
+    const errorBanner = document.getElementById("errorBanner");
+    errorBanner.classList.remove("visible");
+
+    isRunning = true;
+    btn.classList.add("loading");
+    btn.disabled = true;
+
+    try {
+        let result;
+
+        if (currentMode === "csv") {
+            const musicId = document.getElementById("songSelect").value;
+            if (!musicId) throw new Error("Please select a song");
+
+            const compareGt = document.getElementById("compareGt").checked;
+            const lag = parseFloat(document.getElementById("emotionalLag").value) || 2.0;
+
+            const res = await fetch("/api/predict/csv", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    music_id: parseInt(musicId),
+                    compare_gt: compareGt,
+                    emotional_lag: lag,
+                }),
+            });
+
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.error || "Inference failed");
+            }
+
+            result = await res.json();
+
+        } else {
+            const audioFile = document.getElementById("audioFile").files[0];
+            if (!audioFile) throw new Error("Please upload an audio file");
+
+            const lag = parseFloat(document.getElementById("emotionalLag").value) || 2.0;
+            const formData = new FormData();
+            formData.append("audio", audioFile);
+            formData.append("emotional_lag", lag);
+
+            const lrcFile = document.getElementById("lrcFile").files[0];
+            if (lrcFile) formData.append("lyrics", lrcFile);
+
+            const res = await fetch("/api/predict/audio", {
+                method: "POST",
+                body: formData,
+            });
+
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.error || "Inference failed");
+            }
+
+            result = await res.json();
+        }
+
+        displayResults(result);
+
+    } catch (err) {
+        errorBanner.textContent = "⚠ " + err.message;
+        errorBanner.classList.add("visible");
+    } finally {
+        isRunning = false;
+        btn.classList.remove("loading");
+        btn.disabled = false;
+    }
+}
+
+// ================================================================
+// Display Results
+// ================================================================
+
+function displayResults(data) {
+    document.getElementById("emptyState").style.display = "none";
+    document.getElementById("resultsContainer").classList.add("visible");
+
+    const valMean = average(data.valence);
+    const aroMean = average(data.arousal);
+
+    // Stats
+    document.getElementById("statValMean").textContent = valMean.toFixed(3);
+    document.getElementById("statAroMean").textContent = aroMean.toFixed(3);
+    document.getElementById("statFrames").textContent = data.num_frames;
+    document.getElementById("statDuration").textContent = formatTime(data.duration_sec);
+
+    // VA Space dot
+    const dotX = valMean * 100;
+    const dotY = (1 - aroMean) * 100;
+    document.getElementById("vaDot").style.left = dotX + "%";
+    document.getElementById("vaDot").style.top = dotY + "%";
+
+    // Emotion label
+    const emotion = getEmotionLabel(valMean, aroMean);
+    document.getElementById("emotionName").textContent = emotion.name;
+    document.getElementById("emotionDesc").textContent = emotion.desc;
+
+    // Download link
+    if (data.csv_file) {
+        const dlLink = document.getElementById("downloadCsv");
+        dlLink.href = "/api/download/" + data.csv_file;
+        dlLink.download = data.csv_file;
+    }
+
+    // Charts
+    renderCharts(data);
+}
+
+function renderCharts(data) {
+    const timestamps = data.timestamps;
+
+    // Common chart config
+    const chartOptions = (title, color) => ({
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+            mode: "index",
+            intersect: false,
+        },
+        plugins: {
+            legend: {
+                display: true,
+                labels: {
+                    color: "#8888a0",
+                    font: { family: "Inter", size: 11 },
+                    usePointStyle: true,
+                    pointStyleWidth: 16,
+                    padding: 16,
+                },
+            },
+            tooltip: {
+                backgroundColor: "#1c1c28",
+                titleColor: "#f0f0f5",
+                bodyColor: "#8888a0",
+                borderColor: "#2a2a3a",
+                borderWidth: 1,
+                titleFont: { family: "Inter", weight: 600 },
+                bodyFont: { family: "JetBrains Mono", size: 12 },
+                padding: 12,
+                displayColors: true,
+                callbacks: {
+                    title: (items) => `Time: ${parseFloat(items[0].label).toFixed(1)}s`,
+                    label: (item) => ` ${item.dataset.label}: ${item.parsed.y.toFixed(4)}`,
+                },
+            },
+        },
+        scales: {
+            x: {
+                title: {
+                    display: true,
+                    text: "Time (seconds)",
+                    color: "#555570",
+                    font: { family: "Inter", size: 11 },
+                },
+                ticks: {
+                    color: "#555570",
+                    font: { family: "JetBrains Mono", size: 10 },
+                    maxTicksLimit: 15,
+                    callback: (val) => parseFloat(val).toFixed(0) + "s",
+                },
+                grid: { color: "rgba(42, 42, 58, 0.5)" },
+            },
+            y: {
+                min: 0,
+                max: 1,
+                title: {
+                    display: true,
+                    text: title,
+                    color: "#555570",
+                    font: { family: "Inter", size: 11 },
+                },
+                ticks: {
+                    color: "#555570",
+                    font: { family: "JetBrains Mono", size: 10 },
+                    stepSize: 0.2,
+                },
+                grid: { color: "rgba(42, 42, 58, 0.4)" },
+            },
+        },
+        elements: {
+            point: { radius: 0, hitRadius: 8, hoverRadius: 4 },
+        },
+    });
+
+    // Destroy old charts
+    if (valenceChart) valenceChart.destroy();
+    if (arousalChart) arousalChart.destroy();
+
+    // Valence chart
+    const valDatasets = [{
+        label: "Predicted Valence",
+        data: data.valence,
+        borderColor: "#3b82f6",
+        backgroundColor: "rgba(59, 130, 246, 0.08)",
+        borderWidth: 1.5,
+        fill: true,
+        tension: 0.3,
+    }];
+
+    if (data.ground_truth) {
+        valDatasets.push({
+            label: "Ground Truth",
+            data: data.ground_truth.valence,
+            borderColor: "#f97316",
+            backgroundColor: "transparent",
+            borderWidth: 1.2,
+            borderDash: [6, 3],
+            fill: false,
+            tension: 0.3,
+        });
+    }
+
+    valenceChart = new Chart(document.getElementById("valenceChart"), {
+        type: "line",
+        data: { labels: timestamps, datasets: valDatasets },
+        options: chartOptions("Valence", "#3b82f6"),
+    });
+
+    // Arousal chart
+    const aroDatasets = [{
+        label: "Predicted Arousal",
+        data: data.arousal,
+        borderColor: "#10b981",
+        backgroundColor: "rgba(16, 185, 129, 0.08)",
+        borderWidth: 1.5,
+        fill: true,
+        tension: 0.3,
+    }];
+
+    if (data.ground_truth) {
+        aroDatasets.push({
+            label: "Ground Truth",
+            data: data.ground_truth.arousal,
+            borderColor: "#f97316",
+            backgroundColor: "transparent",
+            borderWidth: 1.2,
+            borderDash: [6, 3],
+            fill: false,
+            tension: 0.3,
+        });
+    }
+
+    arousalChart = new Chart(document.getElementById("arousalChart"), {
+        type: "line",
+        data: { labels: timestamps, datasets: aroDatasets },
+        options: chartOptions("Arousal", "#10b981"),
+    });
+}
+
+// ================================================================
+// Helpers
+// ================================================================
+
+function average(arr) {
+    return arr.reduce((a, b) => a + b, 0) / arr.length;
+}
+
+function formatTime(seconds) {
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function getEmotionLabel(v, a) {
+    // Russell's circumplex model quadrants
+    if (v >= 0.5 && a >= 0.5) return { name: "😄 Excited / Happy", desc: "High valence, high arousal" };
+    if (v >= 0.5 && a < 0.5)  return { name: "😌 Calm / Content", desc: "High valence, low arousal" };
+    if (v < 0.5 && a >= 0.5)  return { name: "😠 Tense / Angry", desc: "Low valence, high arousal" };
+    return { name: "😢 Sad / Depressed", desc: "Low valence, low arousal" };
+}
+</script>
+
+</body>
+</html>

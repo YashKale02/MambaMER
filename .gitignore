@@ -1,0 +1,55 @@
+# ==========================================
+# MambaMER .gitignore
+# ==========================================
+
+# --- Model Weights & Checkpoints ---
+# Too large for GitHub (use Google Drive / HuggingFace)
+*.pt
+*.pth
+!global_stats.npz
+
+# --- Dataset (copyrighted, do not redistribute) ---
+PMEmo2019/
+
+# --- Preprocessed/Cached Data ---
+pMemo_features.npz/
+lyrics_deberta_cache.pt
+
+# --- Generated Outputs ---
+results/
+inference_results/
+inspect_short_out/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+# --- Virtual Environments ---
+venv/
+env/
+.venv/
+
+# --- OS Metadata ---
+.DS_Store
+Thumbs.db
+*Zone.Identifier*
+*Zone?Identifier*
+
+# --- IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- Documents (share separately) ---
+*.pdf
+methodology_section.html
+
+# --- Misc ---
+*.log
+*.tmp
